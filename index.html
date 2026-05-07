@@ -348,6 +348,15 @@ input[type=file]{display:none;}
     </div>
 
     <div class="settings-section">
+      <div class="settings-group-header" onclick="toggleGroup('grp-color')" id="hdr-grp-color">
+        <h3>🎨 Akzentfarbe</h3><span class="arr">▾</span>
+      </div>
+      <div class="settings-group-body" id="grp-color">
+        <div id="color-swatches" style="display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <div class="settings-group-header" onclick="toggleGroup('grp-cats')" id="hdr-grp-cats">
         <h3>🏷 Kategorien</h3><span class="arr">▾</span>
       </div>
@@ -385,6 +394,7 @@ input[type=file]{display:none;}
         <input type="file" id="import-file" accept=".json" onchange="importData(event)"/>
       </div>
     </div>
+    <div style="padding:20px 18px 6px;text-align:center;font-size:12px;color:var(--text3);">Version 1.1</div>
     <div style="height:10px"></div>
   </div>
 </div>
@@ -398,6 +408,35 @@ let currentImage=null, editingId=null, selectedCats=[], activeCatFilter=null, so
 const PR=()=>localStorage.setItem('rz_v4',JSON.stringify(recipes));
 const PU=()=>localStorage.setItem('rz_v4_units',JSON.stringify(units));
 const PC=()=>localStorage.setItem('rz_v4_cats',JSON.stringify(cats));
+
+/* ── COLOR THEMES ── */
+const THEMES = [
+  {name:'Terrakotta', accent:'#E8A87C', dim:'rgba(232,168,124,0.13)', dim2:'rgba(232,168,124,0.22)', text3:'#5C5248'},
+  {name:'Salbei',     accent:'#7FB98A', dim:'rgba(127,185,138,0.13)', dim2:'rgba(127,185,138,0.22)', text3:'#425247'},
+  {name:'Lavendel',   accent:'#A891D4', dim:'rgba(168,145,212,0.13)', dim2:'rgba(168,145,212,0.22)', text3:'#4A4258'},
+  {name:'Himmelblau', accent:'#7BAFD4', dim:'rgba(123,175,212,0.13)', dim2:'rgba(123,175,212,0.22)', text3:'#334455'},
+  {name:'Rosé',       accent:'#D48FA0', dim:'rgba(212,143,160,0.13)', dim2:'rgba(212,143,160,0.22)', text3:'#5A3A42'},
+  {name:'Gold',       accent:'#D4B87A', dim:'rgba(212,184,122,0.13)', dim2:'rgba(212,184,122,0.22)', text3:'#5A4A28'},
+];
+let activeTheme = parseInt(localStorage.getItem('rz_v4_theme')||'0');
+
+function applyTheme(idx){
+  const t=THEMES[idx];
+  const r=document.documentElement.style;
+  r.setProperty('--accent',t.accent);
+  r.setProperty('--accent-dim',t.dim);
+  r.setProperty('--accent-dim2',t.dim2);
+  r.setProperty('--text3',t.text3);
+  activeTheme=idx;
+  localStorage.setItem('rz_v4_theme',idx);
+}
+function renderSwatches(){
+  document.getElementById('color-swatches').innerHTML=THEMES.map((t,i)=>`
+    <div onclick="applyTheme(${i});renderSwatches()" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;">
+      <div style="width:38px;height:38px;border-radius:50%;background:${t.accent};border:3px solid ${activeTheme===i?t.accent:'transparent'};outline:2px solid ${activeTheme===i?t.accent:'transparent'};outline-offset:2px;transition:outline .15s;"></div>
+      <span style="font-size:10px;color:${activeTheme===i?t.accent:'var(--text3)'};">${t.name}</span>
+    </div>`).join('');
+}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmtDate(iso){if(!iso)return '';return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});}
 
@@ -466,7 +505,7 @@ function copyShare(){const t=document.getElementById('share-text');t.select();na
 
 async function doImport(){const url=document.getElementById('f-url').value.trim();if(!url)return;const hint=document.getElementById('url-hint');hint.className='url-hint loading';hint.textContent='Wird geladen…';hint.style.display='block';try{const res=await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);const data=await res.json();const doc=new DOMParser().parseFromString(data.contents,'text/html');let name='';const h1=doc.querySelector('h1');if(h1)name=h1.textContent.trim();if(!name){const t=doc.querySelector('title');if(t)name=t.textContent.split(/[|\-–]/)[0].trim();}if(name){document.getElementById('f-name').value=name;hint.className='url-hint ok';hint.textContent='Titel importiert ✓ – Zutaten bitte manuell ergänzen.';}else{hint.className='url-hint err';hint.textContent='Kein Titel gefunden – bitte manuell ausfüllen.';}}catch(e){hint.className='url-hint err';hint.textContent='Import fehlgeschlagen – bitte manuell ausfüllen.';}}
 
-function openSettings(){document.getElementById('cook-toggle').classList.toggle('on',cookModeEnabled);renderSCats();renderSUnits();document.getElementById('settings-overlay').classList.add('open');}
+function openSettings(){document.getElementById('cook-toggle').classList.toggle('on',cookModeEnabled);renderSCats();renderSUnits();renderSwatches();document.getElementById('settings-overlay').classList.add('open');}
 function closeSettings(){document.getElementById('settings-overlay').classList.remove('open');}
 function toggleGroup(id){document.getElementById(id).classList.toggle('open');document.getElementById('hdr-'+id).classList.toggle('open');}
 function toggleCookMode(){cookModeEnabled=!cookModeEnabled;localStorage.setItem('rz_v4_cook',cookModeEnabled);document.getElementById('cook-toggle').classList.toggle('on',cookModeEnabled);}
@@ -500,6 +539,7 @@ function importData(e){const file=e.target.files[0];if(!file)return;const reader
 
 document.addEventListener('keydown',e=>{if(e.key==='Enter'){if(document.activeElement.id==='new-unit')addUnit();if(document.activeElement.id==='new-cat')addCatGlobal();if(document.activeElement.id==='f-new-cat')addCatFromForm();}});
 
+applyTheme(activeTheme);
 buildCatChips();
 renderList();
 </script>
