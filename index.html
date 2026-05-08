@@ -394,7 +394,7 @@ input[type=file]{display:none;}
         <input type="file" id="import-file" accept=".json" onchange="importData(event)"/>
       </div>
     </div>
-    <div style="padding:20px 18px 6px;text-align:center;font-size:12px;color:var(--text3);">Version 1.1</div>
+    <div style="padding:20px 18px 6px;text-align:center;font-size:12px;color:var(--text3);">Version 1.2</div>
     <div style="height:10px"></div>
   </div>
 </div>
@@ -405,7 +405,15 @@ let units   = JSON.parse(localStorage.getItem('rz_v4_units')||JSON.stringify(['T
 let cats    = JSON.parse(localStorage.getItem('rz_v4_cats')||'[]');
 let cookModeEnabled = localStorage.getItem('rz_v4_cook')==='true';
 let currentImage=null, editingId=null, selectedCats=[], activeCatFilter=null, sortMode='alpha';
-const PR=()=>localStorage.setItem('rz_v4',JSON.stringify(recipes));
+const PR=()=>{
+  try{ localStorage.setItem('rz_v4',JSON.stringify(recipes)); }
+  catch(e){
+    // Storage full – try without images as fallback
+    const slim=recipes.map(r=>({...r,image:null}));
+    try{ localStorage.setItem('rz_v4',JSON.stringify(slim)); }catch(_){}
+    alert('Speicher fast voll: Bilder konnten nicht gespeichert werden. Bitte exportiere deine Daten zur Sicherung.');
+  }
+};
 const PU=()=>localStorage.setItem('rz_v4_units',JSON.stringify(units));
 const PC=()=>localStorage.setItem('rz_v4_cats',JSON.stringify(cats));
 
@@ -478,14 +486,50 @@ function addIngRow(unit='',amount='',name=''){
 }
 function getIngredients(){return Array.from(document.querySelectorAll('#ing-rows tr')).map(tr=>({unit:tr.querySelector('.ing-select').value,amount:tr.querySelector('.ing-amount').value.trim(),name:tr.querySelector('.ing-name').value.trim()})).filter(i=>i.name);}
 
-function handleImg(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{currentImage=ev.target.result;const area=document.getElementById('img-upload-area');area.innerHTML=`<img src="${currentImage}"/><div class="img-overlay">Bild ändern</div><input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/>`;};reader.readAsDataURL(file);}
+function compressImage(dataUrl, maxW=800, quality=0.7){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(1, maxW/Math.max(img.width,img.height));
+      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg', quality));
+    };
+    img.src=dataUrl;
+  });
+}
+function setImgArea(){
+  const area=document.getElementById('img-upload-area');
+  if(currentImage){
+    area.innerHTML=`<img src="${currentImage}"/><div class="img-overlay">Bild ändern</div><input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/>`;
+    const del=document.createElement('button');
+    del.textContent='✕';
+    del.title='Bild entfernen';
+    del.style.cssText='position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;z-index:10;line-height:1;';
+    del.onclick=e=>{e.stopPropagation();currentImage=null;setImgArea();};
+    area.appendChild(del);
+  } else {
+    area.innerHTML=`<input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/><span style="font-size:28px">📷</span><span>Bild hinzufügen</span><div class="img-overlay">Bild ändern</div>`;
+  }
+}
+function handleImg(e){
+  const file=e.target.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    currentImage=await compressImage(ev.target.result);
+    setImgArea();
+  };
+  reader.readAsDataURL(file);
+}
 
 function renderFormCats(){document.getElementById('form-cat-chips').innerHTML=cats.map(c=>`<div class="cat-chip-pick ${selectedCats.includes(c)?'sel':''}" onclick="toggleFormCat('${esc(c)}')">${esc(c)}</div>`).join('');}
 function toggleFormCat(c){if(selectedCats.includes(c))selectedCats=selectedCats.filter(x=>x!==c);else selectedCats.push(c);renderFormCats();}
 function addCatFromForm(){const inp=document.getElementById('f-new-cat');const val=inp.value.trim();if(!val)return;if(!cats.includes(val)){cats.push(val);PC();buildCatChips();}if(!selectedCats.includes(val))selectedCats.push(val);inp.value='';renderFormCats();}
 
-function openAdd(){editingId=null;currentImage=null;selectedCats=[];document.getElementById('form-title').textContent='Neues Rezept';['f-url','f-name','f-meta','f-steps','f-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('ing-rows').innerHTML='';document.getElementById('img-upload-area').innerHTML=`<input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/><span style="font-size:28px">📷</span><span>Bild hinzufügen</span><div class="img-overlay">Bild ändern</div>`;const hint=document.getElementById('url-hint');hint.className='url-hint';hint.style.display='none';renderFormCats();addIngRow();document.getElementById('form-overlay').classList.add('open');setTimeout(()=>document.getElementById('f-name').focus(),250);}
-function openEdit(id){closeDetail();const r=recipes.find(x=>x.id===id);if(!r)return;editingId=id;currentImage=r.image||null;selectedCats=[...(r.categories||[])];document.getElementById('form-title').textContent='Rezept bearbeiten';document.getElementById('f-url').value=r.url||'';document.getElementById('f-name').value=r.name||'';document.getElementById('f-meta').value=r.meta||'';document.getElementById('f-steps').value=r.steps||'';document.getElementById('f-notes').value=r.notes||'';const hint=document.getElementById('url-hint');hint.className='url-hint';hint.style.display='none';const area=document.getElementById('img-upload-area');area.innerHTML=r.image?`<img src="${r.image}"/><div class="img-overlay">Bild ändern</div><input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/>`:`<input type="file" id="img-file" accept="image/*" onchange="handleImg(event)"/><span style="font-size:28px">📷</span><span>Bild hinzufügen</span><div class="img-overlay">Bild ändern</div>`;document.getElementById('ing-rows').innerHTML='';const ings=r.ingredients||[];if(ings.length)ings.forEach(i=>addIngRow(i.unit,i.amount,i.name));else addIngRow();renderFormCats();document.getElementById('form-overlay').classList.add('open');}
+function openAdd(){editingId=null;currentImage=null;selectedCats=[];document.getElementById('form-title').textContent='Neues Rezept';['f-url','f-name','f-meta','f-steps','f-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('ing-rows').innerHTML='';document.getElementById('img-upload-area').innerHTML='';setImgArea();const hint=document.getElementById('url-hint');hint.className='url-hint';hint.style.display='none';renderFormCats();addIngRow();document.getElementById('form-overlay').classList.add('open');setTimeout(()=>document.getElementById('f-name').focus(),250);}
+function openEdit(id){closeDetail();const r=recipes.find(x=>x.id===id);if(!r)return;editingId=id;currentImage=r.image||null;selectedCats=[...(r.categories||[])];document.getElementById('form-title').textContent='Rezept bearbeiten';document.getElementById('f-url').value=r.url||'';document.getElementById('f-name').value=r.name||'';document.getElementById('f-meta').value=r.meta||'';document.getElementById('f-steps').value=r.steps||'';document.getElementById('f-notes').value=r.notes||'';const hint=document.getElementById('url-hint');hint.className='url-hint';hint.style.display='none';const area=document.getElementById('img-upload-area');
+  setImgArea();document.getElementById('ing-rows').innerHTML='';const ings=r.ingredients||[];if(ings.length)ings.forEach(i=>addIngRow(i.unit,i.amount,i.name));else addIngRow();renderFormCats();document.getElementById('form-overlay').classList.add('open');}
 function closeForm(){document.getElementById('form-overlay').classList.remove('open');}
 
 function saveRecipe(){const name=document.getElementById('f-name').value.trim();if(!name){document.getElementById('f-name').style.borderColor='var(--danger)';document.getElementById('f-name').focus();setTimeout(()=>document.getElementById('f-name').style.borderColor='',1500);return;}const now=new Date().toISOString();const existing=editingId?recipes.find(r=>r.id===editingId):null;const data={id:editingId||Date.now().toString(),url:document.getElementById('f-url').value.trim(),name,categories:[...selectedCats],meta:document.getElementById('f-meta').value.trim(),ingredients:getIngredients(),steps:document.getElementById('f-steps').value.trim(),notes:document.getElementById('f-notes').value.trim(),image:currentImage,savedAt:existing?existing.savedAt:now,updatedAt:editingId?now:null};if(editingId){const idx=recipes.findIndex(r=>r.id===editingId);recipes[idx]=data;}else recipes.unshift(data);PR();closeForm();document.getElementById('search').value='';renderList();}
